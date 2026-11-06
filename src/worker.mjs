@@ -27,33 +27,6 @@ async function nextNumber(db, table, prefix) {
   const last = row?.n ? Number(row.n.split("/").pop()) : 0;
   return `${prefix}/${year}/${String(last+1).padStart(4,"0")}`;
 }
-
-const ROMAN_MONTHS = ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII"];
-function issueParts(value) {
-  const d = /^([0-9]{4})-([0-9]{2})-[0-9]{2}$/.exec(String(value || ""));
-  if (!d) throw new Error("Tanggal LoA harus menggunakan format YYYY-MM-DD.");
-  const year = Number(d[1]), month = Number(d[2]);
-  if (month < 1 || month > 12) throw new Error("Bulan tanggal LoA tidak valid.");
-  return { year, month };
-}
-async function nextLoaNumber(db, issueDate) {
-  const { year, month } = issueParts(issueDate);
-  const { results = [] } = await db.prepare(
-    "SELECT loa_number FROM loa_documents WHERE substr(issue_date,1,4)=?"
-  ).bind(String(year)).all();
-  // Tahun 2026 melanjutkan nomor manual 501; mulai 2027 reset ke 001.
-  let last = year === 2026 ? 501 : 0;
-  for (const row of results) {
-    const current = String(row.loa_number || "");
-    let match = current.match(/^(\d+)\/LOA\/JTP-UNDIKMA\/[IVX]+\/(\d{4})$/i);
-    if (match && Number(match[2]) === year) last = Math.max(last, Number(match[1]));
-    else {
-      match = current.match(/^(\d+)\s*\//);
-      if (match) last = Math.max(last, Number(match[1]));
-    }
-  }
-  return `${String(last + 1).padStart(3,"0")}/LOA/JTP-UNDIKMA/${ROMAN_MONTHS[month-1]}/${year}`;
-}
 async function log(db, action, type, id, detail="") {
   await db.prepare("INSERT INTO audit_logs(id,action,entity_type,entity_id,detail) VALUES(?,?,?,?,?)")
     .bind(uid(),action,type,id,detail).run();
@@ -67,7 +40,7 @@ export default {
   const verifyPage = path.match(/^\/verify\/([A-Za-z0-9-]+)\/?$/);
   if (verifyPage && req.method === "GET") {
     const code = verifyPage[1];
-    return new Response(`<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Verifikasi Dokumen JTP</title><style>body{font:15px Arial;background:#f3f6fa;color:#172638;margin:0;padding:24px}.card{max-width:680px;margin:6vh auto;background:white;border:1px solid #e1e7ef;border-radius:16px;padding:28px;box-shadow:0 8px 30px #17345412}.status{font-size:20px;font-weight:800;color:#137a50}.row{padding:12px 0;border-bottom:1px solid #e8edf2}.label{color:#718096;font-size:12px;text-transform:uppercase}.value{font-weight:600;margin-top:4px}.muted{color:#68788a}</style></head><body><main class="card"><h2>Jurnal Teknologi Pendidikan</h2><p class="muted">Layanan verifikasi dokumen resmi</p><div id="result">Memeriksa dokumen...</div></main><script>fetch('/api/verify/${code}').then(r=>r.json()).then(d=>{const el=document.getElementById('result');if(!d.valid){el.innerHTML='<p style="color:#b42318;font-weight:bold">DOKUMEN TIDAK VALID / TIDAK DITEMUKAN</p><p>'+((d.message||'Kode verifikasi tidak terdaftar.').replace(/[<>&]/g,''))+'</p>';return}const x=d.document;const esc=s=>String(s??'-').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));el.innerHTML='<p class="status">✓ DOKUMEN VALID</p>'+[['Jenis dokumen',x.type],['Nomor dokumen',x.number],['Judul artikel',x.title],['Penulis',x.authors],['Volume',x.volume],['Issue',x.issue],['Bulan terbit',x.publication_month],['Tahun terbit',x.publication_year],['Tanggal dokumen',x.issue_date],['Status',x.status]].map(a=>'<div class="row"><div class="label">'+esc(a[0])+'</div><div class="value">'+esc(a[1])+'</div></div>').join('')+'<p class="muted">Data diverifikasi langsung dari basis data Jurnal Teknologi Pendidikan.</p>'}).catch(()=>document.getElementById('result').textContent='Verifikasi gagal. Silakan coba kembali.');</script></body></html>`, {headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store"}});
+    return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JTP Document Verification</title><style>body{font:15px Arial;background:#f3f6fa;color:#172638;margin:0;padding:24px}.card{max-width:680px;margin:6vh auto;background:white;border:1px solid #e1e7ef;border-radius:16px;padding:28px;box-shadow:0 8px 30px #17345412}.status{font-size:20px;font-weight:800;color:#137a50}.row{padding:12px 0;border-bottom:1px solid #e8edf2}.label{color:#718096;font-size:12px;text-transform:uppercase}.value{font-weight:600;margin-top:4px}.muted{color:#68788a}</style></head><body><main class="card"><h2>Journal of Educational Technology</h2><p class="muted">Official document verification service</p><div id="result">Checking document...</div></main><script>fetch('/api/verify/${code}').then(r=>r.json()).then(d=>{const el=document.getElementById('result');if(!d.valid){el.innerHTML='<p style="color:#b42318;font-weight:bold">INVALID DOCUMENT / NOT FOUND</p><p>'+((d.message||'The verification code is not registered.').replace(/[<>&]/g,''))+'</p>';return}const x=d.document;const esc=s=>String(s??'-').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));el.innerHTML='<p class="status">✓ DOCUMENT VALID</p>'+[['Document Type',x.type],['Document Number',x.number],['Article Title',x.title],['Author(s)',x.authors],['Volume',x.volume],['Issue',x.issue],['Publication Month',x.publication_month],['Publication Year',x.publication_year],['Document Date',x.issue_date],['Status',x.status]].map(a=>'<div class="row"><div class="label">'+esc(a[0])+'</div><div class="value">'+esc(a[1])+'</div></div>').join('')+'<p class="muted">This information is verified directly against the Journal of Educational Technology database.</p>'}).catch(()=>document.getElementById('result').textContent='Verification failed. Please try again.');</script></body></html>`, {headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store"}});
   }
   const verifyApi = path.match(/^\/api\/verify\/([A-Za-z0-9-]+)$/);
   if (verifyApi && req.method === "GET") {
@@ -134,7 +107,7 @@ export default {
     if (article.email && env.RESEND_API_KEY && env.EMAIL_FROM) {
       try {
         const pay = await env.DB.prepare("SELECT bank_name,bank_account_number,account_holder,qris_data_url,journal_name FROM journal_settings WHERE id=1").first();
-        const emailHtml = `<h2>Invoice ${number}</h2><p>Yth. ${clean(b.payer_name)||clean(article.authors)},</p><p>Invoice biaya publikasi untuk artikel <b>${clean(article.title)}</b>.</p><h2>Rp ${Number(b.amount).toLocaleString("id-ID")}</h2><h3>Pembayaran Transfer Bank</h3><p>Bank: ${clean(pay?.bank_name)||"-"}<br>Nomor rekening: ${clean(pay?.bank_account_number)||"-"}<br>Atas nama: ${clean(pay?.account_holder)||"Ary Purmadi"}</p>${pay?.qris_data_url?`<h3>Pembayaran QRIS</h3><img alt="QRIS" width="220" src="${pay.qris_data_url}"><p>Masukkan nominal sesuai invoice saat membayar.</p>`:""}<p>Nomor invoice: ${number}</p><p>Mohon konfirmasi pembayaran kepada pengelola jurnal.</p>`;
+        const emailHtml = `<h2>Invoice ${number}</h2><p>Dear ${clean(b.payer_name)||clean(article.authors)},</p><p>Please find the publication fee invoice for the article <b>${clean(article.title)}</b>.</p><h2>${Number(b.amount).toLocaleString("en-US")} IDR</h2><h3>Bank Transfer Information</h3><p>Bank: ${clean(pay?.bank_name)||"-"}<br>Account Number: ${clean(pay?.bank_account_number)||"-"}<br>Account Holder: ${clean(pay?.account_holder)||"Ary Purmadi"}</p>${pay?.qris_data_url?`<h3>QRIS Payment</h3><img alt="QRIS" width="220" src="${pay.qris_data_url}"><p>Please enter the invoice amount when making the payment.</p>`:""}<p>Invoice Number: ${number}</p><p>Please confirm your payment with the journal administrator.</p>`;
         const mailResp = await fetch("https://api.resend.com/emails", {method:"POST",headers:{"Authorization":`Bearer ${env.RESEND_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({from:env.EMAIL_FROM,to:[article.email],subject:`Invoice ${number} - ${pay?.journal_name||"Jurnal Teknologi Pendidikan"}`,html:emailHtml})});
         notification = mailResp.ok ? "sent" : "failed";
       } catch (_) { notification = "failed"; }
@@ -158,9 +131,21 @@ export default {
     const article=await env.DB.prepare("SELECT id,title,authors,email FROM articles WHERE id=?").bind(b.article_id).first();
     if(!article) return json({error:"Artikel tidak ditemukan."},404);
     const issueDate=clean(b.issue_date)||new Date().toISOString().slice(0,10);
-    const id=uid(), number=await nextLoaNumber(env.DB,issueDate), verificationCode=crypto.randomUUID();
+    const [year,month]=issueDate.split("-").map(Number);
+    const romanMonths=["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII"];
+    if(!year || !month || month<1 || month>12) return json({error:"Tanggal penerbitan LoA tidak valid."},400);
+    // Continue existing 2026 manual numbering (e.g. 501); reset to 001 for each new year.
+    const existing=await env.DB.prepare("SELECT loa_number,issue_date FROM loa_documents WHERE substr(issue_date,1,4)=?").bind(String(year)).all();
+    let last=0;
+    for(const row of (existing.results||[])){
+      const match=String(row.loa_number||"").match(/^(\d+)(?:\/|$)/);
+      if(match) last=Math.max(last,Number(match[1]));
+    }
+    const sequence=String(last+1).padStart(3,"0");
+    const number=`${sequence}/LOA/JTP-UNDIKMA/${romanMonths[month-1]}/${year}`;
+    const id=uid(), verificationCode=crypto.randomUUID();
     await env.DB.prepare("INSERT INTO loa_documents(id,loa_number,article_id,issue_date,statement_text,signatory_name,signatory_title,verification_code) VALUES(?,?,?,?,?,?,?,?)")
-     .bind(id,number,b.article_id,issueDate,clean(b.statement_text),clean(b.signatory_name),clean(b.signatory_title)||"Editor in Chief",verificationCode).run();
+     .bind(id,number,b.article_id,issueDate,clean(b.statement_text)||"This is to certify that the above-mentioned manuscript has been accepted for publication in the Journal of Educational Technology in the edition specified below.",clean(b.signatory_name),clean(b.signatory_title)||"Editor in Chief",verificationCode).run();
     await log(env.DB,"create","loa",id,number);
     return json({id,loa_number:number,verification_code:verificationCode},201);
    }
