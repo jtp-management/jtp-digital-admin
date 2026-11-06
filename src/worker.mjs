@@ -97,13 +97,22 @@ export default {
    if (path === "/api/invoices" && req.method==="POST") {
     const b=await req.json();
     if (!b.article_id || !Number.isFinite(Number(b.amount)) || Number(b.amount)<0) return json({error:"Artikel dan nominal invoice wajib valid."},400);
-    const article=await env.DB.prepare("SELECT id FROM articles WHERE id=?").bind(b.article_id).first();
+    const article=await env.DB.prepare("SELECT id,title,authors,email FROM articles WHERE id=?").bind(b.article_id).first();
     if(!article) return json({error:"Artikel tidak ditemukan."},404);
     const id=uid(), number=await nextNumber(env.DB,"invoices","INV-JTP"), verificationCode=crypto.randomUUID();
     await env.DB.prepare("INSERT INTO invoices(id,invoice_number,article_id,issue_date,due_date,amount,description,payment_status,payer_name,verification_code) VALUES(?,?,?,?,?,?,?,?,?,?)")
      .bind(id,number,b.article_id,clean(b.issue_date)||new Date().toISOString().slice(0,10),clean(b.due_date),Number(b.amount),clean(b.description),clean(b.payment_status)||"unpaid",clean(b.payer_name),verificationCode).run();
     await log(env.DB,"create","invoice",id,number);
-    return json({id,invoice_number:number,verification_code:verificationCode},201);
+    let notification = "not_configured";
+    if (article.email && env.RESEND_API_KEY && env.EMAIL_FROM) {
+      try {
+        const pay = await env.DB.prepare("SELECT bank_name,bank_account_number,account_holder,qris_data_url,journal_name FROM journal_settings WHERE id=1").first();
+        const emailHtml = `<h2>Invoice ${number}</h2><p>Yth. ${clean(b.payer_name)||clean(article.authors)},</p><p>Invoice biaya publikasi untuk artikel <b>${clean(article.title)}</b>.</p><h2>Rp ${Number(b.amount).toLocaleString("id-ID")}</h2><h3>Pembayaran Transfer Bank</h3><p>Bank: ${clean(pay?.bank_name)||"-"}<br>Nomor rekening: ${clean(pay?.bank_account_number)||"-"}<br>Atas nama: ${clean(pay?.account_holder)||"Ary Purmadi"}</p>${pay?.qris_data_url?`<h3>Pembayaran QRIS</h3><img alt="QRIS" width="220" src="${pay.qris_data_url}"><p>Masukkan nominal sesuai invoice saat membayar.</p>`:""}<p>Nomor invoice: ${number}</p><p>Mohon konfirmasi pembayaran kepada pengelola jurnal.</p>`;
+        const mailResp = await fetch("https://api.resend.com/emails", {method:"POST",headers:{"Authorization":`Bearer ${env.RESEND_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({from:env.EMAIL_FROM,to:[article.email],subject:`Invoice ${number} - ${pay?.journal_name||"Jurnal Teknologi Pendidikan"}`,html:emailHtml})});
+        notification = mailResp.ok ? "sent" : "failed";
+      } catch (_) { notification = "failed"; }
+    }
+    return json({id,invoice_number:number,verification_code:verificationCode,notification},201);
    }
    const payMatch=path.match(/^\/api\/invoices\/([^/]+)\/payment$/);
    if(payMatch && req.method==="POST"){
@@ -119,7 +128,7 @@ export default {
    }
    if (path === "/api/loa" && req.method==="POST") {
     const b=await req.json();
-    const article=await env.DB.prepare("SELECT id FROM articles WHERE id=?").bind(b.article_id).first();
+    const article=await env.DB.prepare("SELECT id,title,authors,email FROM articles WHERE id=?").bind(b.article_id).first();
     if(!article) return json({error:"Artikel tidak ditemukan."},404);
     const id=uid(), number=await nextNumber(env.DB,"loa_documents","LOA-JTP"), verificationCode=crypto.randomUUID();
     await env.DB.prepare("INSERT INTO loa_documents(id,loa_number,article_id,issue_date,statement_text,signatory_name,signatory_title,verification_code) VALUES(?,?,?,?,?,?,?,?)")
@@ -133,8 +142,8 @@ export default {
    }
    if (path === "/api/settings" && req.method==="PUT") {
     const b=await req.json();
-    await env.DB.prepare(`UPDATE journal_settings SET journal_name=?,journal_full_name=?,publisher=?,address=?,email=?,website=?,eissn=?,pissn=?,accreditation=?,accreditation_decree=?,editor_name=?,editor_title=?,city=?,signature_data_url=?,logo_data_url=?,stamp_data_url=?,updated_at=datetime('now') WHERE id=1`)
-     .bind(clean(b.journal_name),clean(b.journal_full_name),clean(b.publisher),clean(b.address),clean(b.email),clean(b.website),clean(b.eissn),clean(b.pissn),clean(b.accreditation),clean(b.accreditation_decree),clean(b.editor_name),clean(b.editor_title),clean(b.city),clean(b.signature_data_url),clean(b.logo_data_url),clean(b.stamp_data_url)).run();
+    await env.DB.prepare(`UPDATE journal_settings SET journal_name=?,journal_full_name=?,publisher=?,address=?,email=?,website=?,eissn=?,pissn=?,accreditation=?,accreditation_decree=?,editor_name=?,editor_title=?,city=?,signature_data_url=?,logo_data_url=?,stamp_data_url=?,bank_name=?,bank_account_number=?,account_holder=?,qris_data_url=?,updated_at=datetime('now') WHERE id=1`)
+     .bind(clean(b.journal_name),clean(b.journal_full_name),clean(b.publisher),clean(b.address),clean(b.email),clean(b.website),clean(b.eissn),clean(b.pissn),clean(b.accreditation),clean(b.accreditation_decree),clean(b.editor_name),clean(b.editor_title),clean(b.city),clean(b.signature_data_url),clean(b.logo_data_url),clean(b.stamp_data_url),clean(b.bank_name),clean(b.bank_account_number),clean(b.account_holder)||"Ary Purmadi",clean(b.qris_data_url)).run();
     await log(env.DB,"update","settings","1","journal settings updated");
     return json({ok:true});
    }
