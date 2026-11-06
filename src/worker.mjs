@@ -103,15 +103,7 @@ export default {
     await env.DB.prepare("INSERT INTO invoices(id,invoice_number,article_id,issue_date,due_date,amount,description,payment_status,payer_name,verification_code) VALUES(?,?,?,?,?,?,?,?,?,?)")
      .bind(id,number,b.article_id,clean(b.issue_date)||new Date().toISOString().slice(0,10),clean(b.due_date),Number(b.amount),clean(b.description),clean(b.payment_status)||"unpaid",clean(b.payer_name),verificationCode).run();
     await log(env.DB,"create","invoice",id,number);
-    let notification = "not_configured";
-    if (article.email && env.RESEND_API_KEY && env.EMAIL_FROM) {
-      try {
-        const pay = await env.DB.prepare("SELECT bank_name,bank_account_number,account_holder,qris_data_url,journal_name FROM journal_settings WHERE id=1").first();
-        const emailHtml = `<h2>Invoice ${number}</h2><p>Dear ${clean(b.payer_name)||clean(article.authors)},</p><p>Please find the publication fee invoice for the article <b>${clean(article.title)}</b>.</p><h2>${Number(b.amount).toLocaleString("en-US")} IDR</h2><h3>Bank Transfer Information</h3><p>Bank: ${clean(pay?.bank_name)||"-"}<br>Account Number: ${clean(pay?.bank_account_number)||"-"}<br>Account Holder: ${clean(pay?.account_holder)||"Ary Purmadi"}</p>${pay?.qris_data_url?`<h3>QRIS Payment</h3><img alt="QRIS" width="220" src="${pay.qris_data_url}"><p>Please enter the invoice amount when making the payment.</p>`:""}<p>Invoice Number: ${number}</p><p>Please confirm your payment with the journal administrator.</p>`;
-        const mailResp = await fetch("https://api.resend.com/emails", {method:"POST",headers:{"Authorization":`Bearer ${env.RESEND_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({from:env.EMAIL_FROM,to:[article.email],subject:`Invoice ${number} - ${pay?.journal_name||"Jurnal Teknologi Pendidikan"}`,html:emailHtml})});
-        notification = mailResp.ok ? "sent" : "failed";
-      } catch (_) { notification = "failed"; }
-    }
+    const notification = "manual_email_available";
     return json({id,invoice_number:number,verification_code:verificationCode,notification},201);
    }
    const payMatch=path.match(/^\/api\/invoices\/([^/]+)\/payment$/);
@@ -159,6 +151,23 @@ export default {
      .bind(clean(b.journal_name),clean(b.journal_full_name),clean(b.publisher),clean(b.address),clean(b.email),clean(b.website),clean(b.eissn),clean(b.pissn),clean(b.accreditation),clean(b.accreditation_decree),clean(b.editor_name),clean(b.editor_title),clean(b.city),clean(b.signature_data_url),clean(b.logo_data_url),clean(b.stamp_data_url),clean(b.bank_name),clean(b.bank_account_number),clean(b.account_holder)||"Ary Purmadi",clean(b.qris_data_url)).run();
     await log(env.DB,"update","settings","1","journal settings updated");
     return json({ok:true});
+   }
+   if (path === "/api/send-document" && req.method === "POST") {
+    const b=await req.json();
+    if (!b.to || !/^invoice$|^loa$/.test(b.document_type) || !b.pdf_base64) return json({error:"Email tujuan, jenis dokumen, dan PDF wajib tersedia."},400);
+    if (!env.GMAIL_CLIENT_ID || !env.GMAIL_CLIENT_SECRET || !env.GMAIL_REFRESH_TOKEN || !env.GMAIL_SENDER) return json({error:"Konfigurasi Gmail belum lengkap. Atur GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN, dan GMAIL_SENDER sebagai Cloudflare Secrets."},503);
+    if (b.pdf_base64.length > 12000000) return json({error:"Ukuran PDF terlalu besar untuk dikirim. Maksimum sekitar 9 MB."},413);
+    const tokenResp=await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({client_id:env.GMAIL_CLIENT_ID,client_secret:env.GMAIL_CLIENT_SECRET,refresh_token:env.GMAIL_REFRESH_TOKEN,grant_type:"refresh_token"})});
+    const tokenData=await tokenResp.json(); if(!tokenResp.ok) return json({error:"Gagal memperoleh token Gmail: "+(tokenData.error_description||tokenData.error||"OAuth error")},502);
+    const safe=(v)=>String(v||"").replace(/[\r\n]/g," ");
+    const boundary="jtp_"+crypto.randomUUID().replaceAll("-","");
+    const filename=safe(b.filename||"Dokumen_JTP.pdf").replace(/[^A-Za-z0-9_.-]/g,"_");
+    const mime=[`From: ${safe(env.GMAIL_SENDER)}`,`To: ${safe(b.to)}`,`Subject: =?UTF-8?B?${btoa(unescape(encodeURIComponent(safe(b.subject||"Dokumen JTP"))))}?=`,`MIME-Version: 1.0`,`Content-Type: multipart/mixed; boundary="${boundary}"`,"",`--${boundary}`,`Content-Type: text/plain; charset="UTF-8"`,`Content-Transfer-Encoding: base64`,"",btoa(unescape(encodeURIComponent(String(b.message||"Terlampir dokumen dari JTP.")))),`--${boundary}`,`Content-Type: application/pdf; name="${filename}"`,`Content-Disposition: attachment; filename="${filename}"`,`Content-Transfer-Encoding: base64`,"",b.pdf_base64,`--${boundary}--`,""].join("\r\n");
+    const raw=btoa(unescape(encodeURIComponent(mime))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
+    const sendResp=await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send",{method:"POST",headers:{Authorization:`Bearer ${tokenData.access_token}`,"Content-Type":"application/json"},body:JSON.stringify({raw})});
+    const sendData=await sendResp.json(); if(!sendResp.ok) return json({error:"Gmail gagal mengirim: "+(sendData.error?.message||"API error")},502);
+    await log(env.DB,"email_sent",b.document_type,b.document_id,`to=${safe(b.to)}; messageId=${sendData.id||""}`);
+    return json({ok:true,message:`PDF berhasil dikirim ke ${safe(b.to)} melalui Gmail.`,message_id:sendData.id});
    }
    if (path === "/api/audit" && req.method==="GET") {
     const {results=[]}=await env.DB.prepare("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 200").all();
