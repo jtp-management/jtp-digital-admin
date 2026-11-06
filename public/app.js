@@ -66,8 +66,8 @@ function settingsPage(){ $("#main").innerHTML=head("Pengaturan Jurnal","Identita
 <label class="full">Unggah stempel jurnal (PNG, maks. 300 KB)<input id="stampFile" type="file" accept="image/png"></label>
 <div class="full">${settings.stamp_data_url?`<img class="signature-preview" src="${settings.stamp_data_url}">`:`<img class="signature-preview" src="/assets/stempel-jurnal.png" alt="Stempel JTP default">`}</div>
 <div class="full"><h3>Informasi Pembayaran Invoice</h3></div>
-<label>Nama Bank<input name="bank_name" value="${esc(settings.bank_name||"")} " placeholder="Contoh: BRI / BNI / Mandiri"></label>
-<label>Nomor Rekening<input name="bank_account_number" value="${esc(settings.bank_account_number||"")}" placeholder="Masukkan nomor rekening"></label>
+<label>Nama Bank<input name="bank_name" value="${esc(settings.bank_name||"Bank Tabungan Negara (BTN)")} " placeholder="Contoh: BTN"></label>
+<label>Nomor Rekening<input name="bank_account_number" value="${esc(settings.bank_account_number||"50601700002116")}" placeholder="Masukkan nomor rekening"></label>
 <label class="full">Atas Nama<input name="account_holder" value="${esc(settings.account_holder||"Ary Purmadi")}" required></label>
 <label class="full">Unggah QRIS (PNG/JPG, maks. 300 KB)<input id="qrisFile" type="file" accept="image/png,image/jpeg"></label>
 <div class="full">${settings.qris_data_url?`<img class="signature-preview" src="${settings.qris_data_url}" alt="QRIS jurnal">`:"QRIS belum diunggah."}</div>
