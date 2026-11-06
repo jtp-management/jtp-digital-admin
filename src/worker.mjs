@@ -27,6 +27,33 @@ async function nextNumber(db, table, prefix) {
   const last = row?.n ? Number(row.n.split("/").pop()) : 0;
   return `${prefix}/${year}/${String(last+1).padStart(4,"0")}`;
 }
+
+const ROMAN_MONTHS = ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII"];
+function issueParts(value) {
+  const d = /^([0-9]{4})-([0-9]{2})-[0-9]{2}$/.exec(String(value || ""));
+  if (!d) throw new Error("Tanggal LoA harus menggunakan format YYYY-MM-DD.");
+  const year = Number(d[1]), month = Number(d[2]);
+  if (month < 1 || month > 12) throw new Error("Bulan tanggal LoA tidak valid.");
+  return { year, month };
+}
+async function nextLoaNumber(db, issueDate) {
+  const { year, month } = issueParts(issueDate);
+  const { results = [] } = await db.prepare(
+    "SELECT loa_number FROM loa_documents WHERE substr(issue_date,1,4)=?"
+  ).bind(String(year)).all();
+  // Tahun 2026 melanjutkan nomor manual 501; mulai 2027 reset ke 001.
+  let last = year === 2026 ? 501 : 0;
+  for (const row of results) {
+    const current = String(row.loa_number || "");
+    let match = current.match(/^(\d+)\/LOA\/JTP-UNDIKMA\/[IVX]+\/(\d{4})$/i);
+    if (match && Number(match[2]) === year) last = Math.max(last, Number(match[1]));
+    else {
+      match = current.match(/^(\d+)\s*\//);
+      if (match) last = Math.max(last, Number(match[1]));
+    }
+  }
+  return `${String(last + 1).padStart(3,"0")}/LOA/JTP-UNDIKMA/${ROMAN_MONTHS[month-1]}/${year}`;
+}
 async function log(db, action, type, id, detail="") {
   await db.prepare("INSERT INTO audit_logs(id,action,entity_type,entity_id,detail) VALUES(?,?,?,?,?)")
     .bind(uid(),action,type,id,detail).run();
@@ -130,9 +157,10 @@ export default {
     const b=await req.json();
     const article=await env.DB.prepare("SELECT id,title,authors,email FROM articles WHERE id=?").bind(b.article_id).first();
     if(!article) return json({error:"Artikel tidak ditemukan."},404);
-    const id=uid(), number=await nextNumber(env.DB,"loa_documents","LOA-JTP"), verificationCode=crypto.randomUUID();
+    const issueDate=clean(b.issue_date)||new Date().toISOString().slice(0,10);
+    const id=uid(), number=await nextLoaNumber(env.DB,issueDate), verificationCode=crypto.randomUUID();
     await env.DB.prepare("INSERT INTO loa_documents(id,loa_number,article_id,issue_date,statement_text,signatory_name,signatory_title,verification_code) VALUES(?,?,?,?,?,?,?,?)")
-     .bind(id,number,b.article_id,clean(b.issue_date)||new Date().toISOString().slice(0,10),clean(b.statement_text),clean(b.signatory_name),clean(b.signatory_title)||"Editor in Chief",verificationCode).run();
+     .bind(id,number,b.article_id,issueDate,clean(b.statement_text),clean(b.signatory_name),clean(b.signatory_title)||"Editor in Chief",verificationCode).run();
     await log(env.DB,"create","loa",id,number);
     return json({id,loa_number:number,verification_code:verificationCode},201);
    }
