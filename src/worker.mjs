@@ -35,6 +35,25 @@ export default {
  async fetch(req, env) {
   if (req.method === "OPTIONS") return new Response(null,{headers:cors});
   const url = new URL(req.url), path = url.pathname;
+
+  // Public verification page and lookup: intentionally read-only, no admin key.
+  const verifyPage = path.match(/^\/verify\/([A-Za-z0-9-]+)\/?$/);
+  if (verifyPage && req.method === "GET") {
+    const code = verifyPage[1];
+    return new Response(`<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Verifikasi Dokumen JTP</title><style>body{font:15px Arial;background:#f3f6fa;color:#172638;margin:0;padding:24px}.card{max-width:680px;margin:6vh auto;background:white;border:1px solid #e1e7ef;border-radius:16px;padding:28px;box-shadow:0 8px 30px #17345412}.status{font-size:20px;font-weight:800;color:#137a50}.row{padding:12px 0;border-bottom:1px solid #e8edf2}.label{color:#718096;font-size:12px;text-transform:uppercase}.value{font-weight:600;margin-top:4px}.muted{color:#68788a}</style></head><body><main class="card"><h2>Jurnal Teknologi Pendidikan</h2><p class="muted">Layanan verifikasi dokumen resmi</p><div id="result">Memeriksa dokumen...</div></main><script>fetch('/api/verify/${code}').then(r=>r.json()).then(d=>{const el=document.getElementById('result');if(!d.valid){el.innerHTML='<p style="color:#b42318;font-weight:bold">DOKUMEN TIDAK VALID / TIDAK DITEMUKAN</p><p>'+((d.message||'Kode verifikasi tidak terdaftar.').replace(/[<>&]/g,''))+'</p>';return}const x=d.document;const esc=s=>String(s??'-').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));el.innerHTML='<p class="status">✓ DOKUMEN VALID</p>'+[['Jenis dokumen',x.type],['Nomor dokumen',x.number],['Judul artikel',x.title],['Penulis',x.authors],['Volume',x.volume],['Issue',x.issue],['Bulan terbit',x.publication_month],['Tahun terbit',x.publication_year],['Tanggal dokumen',x.issue_date],['Status',x.status]].map(a=>'<div class="row"><div class="label">'+esc(a[0])+'</div><div class="value">'+esc(a[1])+'</div></div>').join('')+'<p class="muted">Data diverifikasi langsung dari basis data Jurnal Teknologi Pendidikan.</p>'}).catch(()=>document.getElementById('result').textContent='Verifikasi gagal. Silakan coba kembali.');</script></body></html>`, {headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store"}});
+  }
+  const verifyApi = path.match(/^\/api\/verify\/([A-Za-z0-9-]+)$/);
+  if (verifyApi && req.method === "GET") {
+    try {
+      const code = verifyApi[1];
+      const inv = await env.DB.prepare("SELECT i.invoice_number AS number,i.issue_date,a.title,a.authors,a.volume,a.issue,a.publication_month,a.publication_year,i.payment_status AS status FROM invoices i JOIN articles a ON a.id=i.article_id WHERE i.verification_code=?").bind(code).first();
+      if (inv) return json({valid:true,document:{type:"Invoice",...inv}});
+      const loa = await env.DB.prepare("SELECT l.loa_number AS number,l.issue_date,a.title,a.authors,a.volume,a.issue,a.publication_month,a.publication_year,'Diterbitkan' AS status FROM loa_documents l JOIN articles a ON a.id=l.article_id WHERE l.verification_code=?").bind(code).first();
+      if (loa) return json({valid:true,document:{type:"Letter of Acceptance",...loa}});
+      return json({valid:false,message:"Kode verifikasi tidak terdaftar atau dokumen tidak ditemukan."},404);
+    } catch (e) { return json({valid:false,message:"Layanan verifikasi belum siap. Hubungi administrator."},500); }
+  }
+
   if (!path.startsWith("/api/")) return json({error:"Not found"},404);
   if (!(await authorised(req,env))) return json({error:"Unauthorized"},401);
   try {
@@ -80,11 +99,11 @@ export default {
     if (!b.article_id || !Number.isFinite(Number(b.amount)) || Number(b.amount)<0) return json({error:"Artikel dan nominal invoice wajib valid."},400);
     const article=await env.DB.prepare("SELECT id FROM articles WHERE id=?").bind(b.article_id).first();
     if(!article) return json({error:"Artikel tidak ditemukan."},404);
-    const id=uid(), number=await nextNumber(env.DB,"invoices","INV-JTP");
-    await env.DB.prepare("INSERT INTO invoices(id,invoice_number,article_id,issue_date,due_date,amount,description,payment_status,payer_name) VALUES(?,?,?,?,?,?,?,?,?)")
-     .bind(id,number,b.article_id,clean(b.issue_date)||new Date().toISOString().slice(0,10),clean(b.due_date),Number(b.amount),clean(b.description),clean(b.payment_status)||"unpaid",clean(b.payer_name)).run();
+    const id=uid(), number=await nextNumber(env.DB,"invoices","INV-JTP"), verificationCode=crypto.randomUUID();
+    await env.DB.prepare("INSERT INTO invoices(id,invoice_number,article_id,issue_date,due_date,amount,description,payment_status,payer_name,verification_code) VALUES(?,?,?,?,?,?,?,?,?,?)")
+     .bind(id,number,b.article_id,clean(b.issue_date)||new Date().toISOString().slice(0,10),clean(b.due_date),Number(b.amount),clean(b.description),clean(b.payment_status)||"unpaid",clean(b.payer_name),verificationCode).run();
     await log(env.DB,"create","invoice",id,number);
-    return json({id,invoice_number:number},201);
+    return json({id,invoice_number:number,verification_code:verificationCode},201);
    }
    const payMatch=path.match(/^\/api\/invoices\/([^/]+)\/payment$/);
    if(payMatch && req.method==="POST"){
@@ -102,11 +121,11 @@ export default {
     const b=await req.json();
     const article=await env.DB.prepare("SELECT id FROM articles WHERE id=?").bind(b.article_id).first();
     if(!article) return json({error:"Artikel tidak ditemukan."},404);
-    const id=uid(), number=await nextNumber(env.DB,"loa_documents","LOA-JTP");
-    await env.DB.prepare("INSERT INTO loa_documents(id,loa_number,article_id,issue_date,statement_text,signatory_name,signatory_title) VALUES(?,?,?,?,?,?,?)")
-     .bind(id,number,b.article_id,clean(b.issue_date)||new Date().toISOString().slice(0,10),clean(b.statement_text),clean(b.signatory_name),clean(b.signatory_title)||"Editor in Chief").run();
+    const id=uid(), number=await nextNumber(env.DB,"loa_documents","LOA-JTP"), verificationCode=crypto.randomUUID();
+    await env.DB.prepare("INSERT INTO loa_documents(id,loa_number,article_id,issue_date,statement_text,signatory_name,signatory_title,verification_code) VALUES(?,?,?,?,?,?,?,?)")
+     .bind(id,number,b.article_id,clean(b.issue_date)||new Date().toISOString().slice(0,10),clean(b.statement_text),clean(b.signatory_name),clean(b.signatory_title)||"Editor in Chief",verificationCode).run();
     await log(env.DB,"create","loa",id,number);
-    return json({id,loa_number:number},201);
+    return json({id,loa_number:number,verification_code:verificationCode},201);
    }
    if (path === "/api/settings" && req.method==="GET") {
     const row=await env.DB.prepare("SELECT * FROM journal_settings WHERE id=1").first();
