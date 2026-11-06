@@ -1,0 +1,7 @@
+name = "jtp-digital-admin"
+compatibility_date = "2026-11-06"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jtp-journal-db"
+database_id = "GANTI_DENGAN_DATABASE_ID_ANDA"

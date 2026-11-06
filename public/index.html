@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JTP Digital Administration</title><link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="login" class="login-wrap">
+ <form id="loginForm" class="login-card">
+  <div class="brand-mark">JTP</div><h1>Digital Administration</h1>
+  <p>Jurnal Teknologi Pendidikan</p>
+  <label>Admin API Key<input id="apiKey" type="password" autocomplete="current-password" required placeholder="Masukkan API key Cloudflare"></label>
+  <button>Masuk ke Dashboard</button><small>API key disimpan pada browser ini. Jangan gunakan komputer publik.</small>
+ </form>
+</div>
+<div id="app" class="hidden">
+<header class="topbar"><div><div class="eyebrow">JOURNAL MANAGEMENT SYSTEM</div><strong>JTP Digital Admin</strong></div><button id="logout" class="btn-light">Keluar</button></header>
+<div class="layout">
+<aside class="sidebar">
+ <button data-page="dashboard" class="nav active">▦ Dashboard</button>
+ <button data-page="articles" class="nav">▤ Data Artikel</button>
+ <button data-page="invoices" class="nav">▧ Invoice & Pembayaran</button>
+ <button data-page="loa" class="nav">✉ Letter of Acceptance</button>
+ <button data-page="settings" class="nav">⚙ Pengaturan Jurnal</button>
+ <button data-page="audit" class="nav">◷ Riwayat Aktivitas</button>
+</aside>
+<main id="main" class="content"></main>
+</div>
+</div>
+<div id="toast" class="toast"></div>
+<script src="/app.js"></script>
+</body></html>
