@@ -56,23 +56,23 @@ export default {
     if (!clean(b.title) || !clean(b.authors)) return json({error:"Judul artikel dan nama penulis wajib diisi."},400);
     const id=uid(), code=`JTP-${slugYear()}-${id.slice(0,8).toUpperCase()}`;
     await env.DB.prepare(`INSERT INTO articles
-      (id,article_code,title,authors,corresponding_author,email,affiliation,volume,issue,publication_year,received_date,accepted_date,status)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      (id,article_code,title,authors,corresponding_author,email,affiliation,volume,issue,publication_year,publication_month,received_date,accepted_date,status)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .bind(id,code,clean(b.title),clean(b.authors),clean(b.corresponding_author),clean(b.email),clean(b.affiliation),
-       clean(b.volume),clean(b.issue),clean(b.publication_year),clean(b.received_date),clean(b.accepted_date),clean(b.status)||"submitted").run();
+       clean(b.volume),clean(b.issue),clean(b.publication_year),clean(b.publication_month),clean(b.received_date),clean(b.accepted_date),clean(b.status)||"submitted").run();
     await log(env.DB,"create","article",id,code);
     return json({id,article_code:code},201);
    }
    const artMatch=path.match(/^\/api\/articles\/([^/]+)$/);
    if (artMatch && req.method==="PUT") {
     const b=await req.json(), id=artMatch[1];
-    await env.DB.prepare(`UPDATE articles SET title=?,authors=?,corresponding_author=?,email=?,affiliation=?,volume=?,issue=?,publication_year=?,received_date=?,accepted_date=?,status=?,updated_at=datetime('now') WHERE id=?`)
-     .bind(clean(b.title),clean(b.authors),clean(b.corresponding_author),clean(b.email),clean(b.affiliation),clean(b.volume),clean(b.issue),clean(b.publication_year),clean(b.received_date),clean(b.accepted_date),clean(b.status),id).run();
+    await env.DB.prepare(`UPDATE articles SET title=?,authors=?,corresponding_author=?,email=?,affiliation=?,volume=?,issue=?,publication_year=?,publication_month=?,received_date=?,accepted_date=?,status=?,updated_at=datetime('now') WHERE id=?`)
+     .bind(clean(b.title),clean(b.authors),clean(b.corresponding_author),clean(b.email),clean(b.affiliation),clean(b.volume),clean(b.issue),clean(b.publication_year),clean(b.publication_month),clean(b.received_date),clean(b.accepted_date),clean(b.status),id).run();
     await log(env.DB,"update","article",id);
     return json({ok:true});
    }
    if (path === "/api/invoices" && req.method==="GET") {
-    const {results=[]}=await env.DB.prepare("SELECT i.*,a.title,a.authors,a.email,a.volume,a.issue,a.publication_year FROM invoices i JOIN articles a ON a.id=i.article_id ORDER BY i.created_at DESC").all();
+    const {results=[]}=await env.DB.prepare("SELECT i.*,a.title,a.authors,a.email,a.volume,a.issue,a.publication_year,a.publication_month FROM invoices i JOIN articles a ON a.id=i.article_id ORDER BY i.created_at DESC").all();
     return json(results);
    }
    if (path === "/api/invoices" && req.method==="POST") {
@@ -95,7 +95,7 @@ export default {
     return json({ok:true});
    }
    if (path === "/api/loa" && req.method==="GET") {
-    const {results=[]}=await env.DB.prepare("SELECT l.*,a.title,a.authors,a.email,a.volume,a.issue,a.publication_year FROM loa_documents l JOIN articles a ON a.id=l.article_id ORDER BY l.created_at DESC").all();
+    const {results=[]}=await env.DB.prepare("SELECT l.*,a.title,a.authors,a.email,a.volume,a.issue,a.publication_year,a.publication_month FROM loa_documents l JOIN articles a ON a.id=l.article_id ORDER BY l.created_at DESC").all();
     return json(results);
    }
    if (path === "/api/loa" && req.method==="POST") {
@@ -114,8 +114,8 @@ export default {
    }
    if (path === "/api/settings" && req.method==="PUT") {
     const b=await req.json();
-    await env.DB.prepare(`UPDATE journal_settings SET journal_name=?,publisher=?,address=?,email=?,website=?,editor_name=?,editor_title=?,signature_data_url=?,updated_at=datetime('now') WHERE id=1`)
-     .bind(clean(b.journal_name),clean(b.publisher),clean(b.address),clean(b.email),clean(b.website),clean(b.editor_name),clean(b.editor_title),clean(b.signature_data_url)).run();
+    await env.DB.prepare(`UPDATE journal_settings SET journal_name=?,journal_full_name=?,publisher=?,address=?,email=?,website=?,eissn=?,pissn=?,accreditation=?,accreditation_decree=?,editor_name=?,editor_title=?,city=?,signature_data_url=?,logo_data_url=?,stamp_data_url=?,updated_at=datetime('now') WHERE id=1`)
+     .bind(clean(b.journal_name),clean(b.journal_full_name),clean(b.publisher),clean(b.address),clean(b.email),clean(b.website),clean(b.eissn),clean(b.pissn),clean(b.accreditation),clean(b.accreditation_decree),clean(b.editor_name),clean(b.editor_title),clean(b.city),clean(b.signature_data_url),clean(b.logo_data_url),clean(b.stamp_data_url)).run();
     await log(env.DB,"update","settings","1","journal settings updated");
     return json({ok:true});
    }

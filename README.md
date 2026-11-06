@@ -49,3 +49,11 @@ Tombol WhatsApp menyiapkan pesan dan tautan dokumen. Untuk membagikan PDF, unduh
 - Nomor dokumen dibuat otomatis, tetapi formatnya dapat disesuaikan.
 - Semua API admin dilindungi `ADMIN_API_KEY`. Gunakan HTTPS (Cloudflare Pages otomatis).
 - Untuk penggunaan institusional/produksi, disarankan menambah role user, audit log lebih rinci, backup terjadwal, R2 untuk file tanda tangan, dan layanan email transactional.
+
+
+## Update 2: Identitas JTP, bulan terbit, stempel, dan kop LoA
+File aset tersedia di `public/assets/logo-jtp.jpg` dan `public/assets/stempel-jurnal.png`.
+Setelah update source code di GitHub, jalankan SQL tambahan `migrations/0002_journal_branding.sql` SATU KALI pada database D1 yang sama. Jangan jalankan ulang `0001_init.sql`.
+Migration ini menambah metadata jurnal (nama lengkap, ISSN, akreditasi, nomor SK, logo, stempel, kota) dan `publication_month` pada artikel.
+Setelah migration berhasil, deploy ulang Pages. Buka Pengaturan Jurnal dan isi identitas, unggah tanda tangan editor (maks. 300 KB), serta periksa logo/stempel.
+Catatan: logo jurnal yang diberikan berupa JPG dengan latar putih; stempel berupa PNG transparan. Logo indeksasi pada contoh LoA belum diberikan sebagai file terpisah, sehingga versi ini menampilkan nama indeksasi dalam bentuk teks, bukan logo grafis.
