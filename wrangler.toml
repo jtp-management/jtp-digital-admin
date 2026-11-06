@@ -1,7 +1,8 @@
 name = "jtp-digital-admin"
 compatibility_date = "2026-11-06"
+pages_build_output_dir = "./public"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "jtp-journal-db"
-database_id = "GANTI_DENGAN_DATABASE_ID_ANDA"
+database_id = "64ecf559-2880-453c-b4cf-75c2934a2c5d"
